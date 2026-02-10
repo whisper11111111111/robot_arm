@@ -1,6 +1,33 @@
-# 项目复刻指南 (Replication Guide)
+# 🤖 智能语音具身智能机械臂 (Voice-Controlled Embodied AI Robot Arm)
 
-本指南详细介绍了如何从零开始复刻“智能语音机械臂”项目，包括硬件准备、环境搭建、以及**最关键的三个AI模型（语音、视觉、大脑）的获取与训练方法**。
+这是一个基于多模态大模型的全栈具身智能项目，实现了从**语音指令**到**机械臂动作**的端到端控制。项目完全运行在本地消费级硬件（RTX 3060 Laptop）上，集成了自动语音识别（ASR）、大语言模型（LLM）指令跟随、视觉目标检测（CV）与逆运动学控制（IK）。
+
+> **关键词**: `Embodied AI`, `Robot Arm`, `Voice Control`, `LLM`, `YOLOv8`, `Whisper`, `Fine-tuning`, `DeepSeek`, `ESP32`, `Inverse Kinematics`
+
+## ✨ 项目亮点
+
+*   **👂 听 (Listen)**: 使用 **Faster-Whisper** 进行本地语音识别，支持抗噪与谐音纠错。
+*   **🧠 想 (Think)**: 基于 **DeepSeek/Qwen** 大模型微调 (LoRA)，将自然语言能够解析为结构化的 JSON 动作指令。
+*   **👁️ 看 (Look)**: 结合 **YOLOv8** 视觉识别与手眼标定系统，实现精准的物体定位。
+*   **💪 动 (Move)**: 自研 **D-H 逆运动学算法** 与 S-Curve 速度规划，保证机械臂在 ESP32 控制下的平滑运动。
+
+---
+
+## 🛠️ 技术栈总览
+
+| 模块 | 技术方案 | 作用 |
+| :--- | :--- | :--- |
+| **语音识别** | **Faster-Whisper** (Base) | 离线语音转文本，支持流式输入 |
+| **语义理解** | **LLM (DeepSeek/Qwen) + LoRA** | 指令意图解析，泛化复杂语序 |
+| **视觉感知** | **YOLOv8s** + OpenCV | 目标检测与坐标映射 (Homography) |
+| **运动控制** | **Python (IK)** + **ESP32 (C++)** | 逆解算与底层 PWM 舵机驱动 |
+| **训练框架** | **LLaMA-Factory** | 高效微调大模型指令跟随能力 |
+
+---
+
+# 📖 项目复刻指南 (Replication Guide)
+
+本指南详细介绍了如何从零开始复刻本项目，包括硬件准备、环境搭建、以及**最关键的三个AI模型（语音、视觉、大脑）的获取与训练方法**。
 
 ## 1. 硬件准备 (Hardware)
 
