@@ -12,6 +12,17 @@
 *   **麦克风**: 任意USB麦克风或电脑内置麦克风。
 *   **计算设备**: 建议配备 NVIDIA 显卡的 Windows/Linux 电脑（用于加速 YOLO 和 LLM 推理）。
 
+### 1.1 固件烧录 (Firmware)
+本项目包含下位机控制代码 `main.ino`，适用于 ESP32 开发板。
+*   **开发环境**: Arduino IDE 2.x
+*   **开发板管理器**: ESP32 by Espressif Systems (建议版本 3.0.0+)
+*   **烧录步骤**:
+    1.  使用 USB 数据线连接 ESP32 到电脑。
+    2.  打开 `main.ino` 文件。
+    3.  选择开发板型号（如 "ESP32 Dev Module"）和端口。
+    4.  上传代码。
+    5.  记下端口号（如 `COM3`），后续需在 `voice_main.py` 中配置。
+
 ## 2. 软件环境搭建 (Software)
 
 ### 2.1 基础环境
