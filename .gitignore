@@ -1,0 +1,50 @@
+# Python internals
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Models & Weights (Excluded)
+*.pt
+*.pth
+*.bin
+*.onnx
+*.safetensors
+*.engine
+best.pt
+yolov8s-world.pt
+
+# Large Data & Outputs (Excluded)
+runs/
+saves/
+data/
+images/
+CLIP-main/
+LLaMA-Factory/
+model/
+test_code/
+__pycache__/
+
+# Temporary Files
+temp_voice.wav
+
+# Unused Python Files (Exclude everything by default, then allow specific ones)
+*.py
+*.json
+
+# Allow only necessary files (Whitelist)
+!voice_main.py
+!arm_main.py
+!whisper_main.py
+!项目介绍文档.md
+!ck.md
+!lora.md
