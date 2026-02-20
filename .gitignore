@@ -45,6 +45,7 @@ temp_voice.wav
 !voice_main.py
 !arm_main.py
 !whisper_main.py
+!config.py
 !项目介绍文档.md
 !ck.md
 !lora.md
