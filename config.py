@@ -50,3 +50,22 @@ DAMPING_FACTOR      = float(os.environ.get("DAMPING_FACTOR",    "0.6"))
 # ---------------------------------------------------------------------------
 OFFSET_Y = float(os.environ.get("OFFSET_Y", "-10.0"))
 OFFSET_Z = float(os.environ.get("OFFSET_Z",  "0.0"))
+
+# ---------------------------------------------------------------------------
+# Audio processing
+# ---------------------------------------------------------------------------
+AUDIO_SILENCE_THRESHOLD = float(os.environ.get("AUDIO_SILENCE_THRESHOLD", "0.01"))
+AUDIO_SILENCE_MARGIN    = float(os.environ.get("AUDIO_SILENCE_MARGIN",    "0.3"))   # seconds
+AUDIO_MIN_DURATION      = float(os.environ.get("AUDIO_MIN_DURATION",      "0.5"))   # seconds
+AUDIO_MAX_DURATION      = float(os.environ.get("AUDIO_MAX_DURATION",      "15.0"))  # seconds
+
+# ---------------------------------------------------------------------------
+# Default motion increment for fuzzy directional commands (no explicit distance)
+# ---------------------------------------------------------------------------
+DEFAULT_MOVE_MM = float(os.environ.get("DEFAULT_MOVE_MM", "50.0"))
+
+# ---------------------------------------------------------------------------
+# Gesture animation (nod / shake_head)
+# ---------------------------------------------------------------------------
+GESTURE_AMPLITUDE = float(os.environ.get("GESTURE_AMPLITUDE", "30.0"))  # mm
+GESTURE_CYCLES    = int(os.environ.get("GESTURE_CYCLES",    "3"))

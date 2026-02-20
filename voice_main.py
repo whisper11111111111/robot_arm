@@ -5,7 +5,6 @@ import time
 
 import cv2
 import numpy as np
-import scipy.io.wavfile as wav
 import sounddevice as sd
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -202,20 +201,19 @@ class RobotBrain:
         if m:
             return [{"action": "move_inc", "axis": "x", "value": -extract_value(m, 2, 3)}]
 
-        # Fuzzy directional commands without explicit distance — use default 5 cm
-        DEFAULT_MOVE = 50.0  # mm
+        # Fuzzy directional commands without explicit distance — use config default
         if re.search(r'(向?上|抬起|举起|往上)', text):
-            return [{"action": "move_inc", "axis": "z", "value": DEFAULT_MOVE}]
+            return [{"action": "move_inc", "axis": "z", "value": config.DEFAULT_MOVE_MM}]
         if re.search(r'(向?下|往下)', text):
-            return [{"action": "move_inc", "axis": "z", "value": -DEFAULT_MOVE}]
+            return [{"action": "move_inc", "axis": "z", "value": -config.DEFAULT_MOVE_MM}]
         if re.search(r'(向?左|往左)', text):
-            return [{"action": "move_inc", "axis": "y", "value": DEFAULT_MOVE}]
+            return [{"action": "move_inc", "axis": "y", "value": config.DEFAULT_MOVE_MM}]
         if re.search(r'(向?右|往右)', text):
-            return [{"action": "move_inc", "axis": "y", "value": -DEFAULT_MOVE}]
+            return [{"action": "move_inc", "axis": "y", "value": -config.DEFAULT_MOVE_MM}]
         if re.search(r'(向?前|往前)', text):
-            return [{"action": "move_inc", "axis": "x", "value": DEFAULT_MOVE}]
+            return [{"action": "move_inc", "axis": "x", "value": config.DEFAULT_MOVE_MM}]
         if re.search(r'(向?后|往后)', text):
-            return [{"action": "move_inc", "axis": "x", "value": -DEFAULT_MOVE}]
+            return [{"action": "move_inc", "axis": "x", "value": -config.DEFAULT_MOVE_MM}]
 
         return None  # not a simple command — fall through to LLM
 
@@ -326,12 +324,6 @@ class AutoGraspSystem:
     def __init__(self):
         print("\n[1/3] Initializing robot arm...")
         self.arm = RobotArmUltimate()  # uses config.SERIAL_PORT / SERIAL_BAUD
-        self.arm.set_damping_params(
-            buffer_size=config.DAMPING_BUFFER_SIZE,
-            max_speed=config.DAMPING_MAX_SPEED,
-            damping_factor=config.DAMPING_FACTOR,
-        )
-        self.arm.set_correction(offset_y=config.OFFSET_Y, offset_z=config.OFFSET_Z)
 
         print("[2/3] Loading YOLO model...")
         self.model = YOLO(config.YOLO_MODEL_PATH)
@@ -463,22 +455,13 @@ class AutoGraspSystem:
             return rx, ry
         return None
 
-    def execute_pick(self, rx, ry, current_pos=None):
-        """Execute pick action: move to target (rx, ry) and grasp.
+    def _approach_and_grasp(self, rx, ry, current_pos):
+        """Move to hover above target, descend to grab height, close gripper.
 
-        Args:
-            rx, ry: robot-frame target coordinates (mm)
-            current_pos: actual current end-effector position (mm, [x, y, z]).
-                         Falls back to REST_POS if None.
+        Returns the grab position (p_down) so callers can continue from there.
         """
-        if current_pos is None:
-            current_pos = np.array([config.REST_X, config.REST_Y, config.REST_Z])
-
-        p_up    = np.array([rx, ry, config.Z_HOVER])
-        p_down  = np.array([rx, ry, config.Z_GRAB])
-        p_after = np.array([rx, ry, config.Z_AFTER_PICK])
-
-        print(f"\n[Pick] target=({rx:.1f}, {ry:.1f}), from={current_pos}")
+        p_up   = np.array([rx, ry, config.Z_HOVER])
+        p_down = np.array([rx, ry, config.Z_GRAB])
 
         self.arm.gripper_control(70)
         self.gripper_closed = False
@@ -493,43 +476,28 @@ class AutoGraspSystem:
         self.gripper_closed = True
         time.sleep(0.5)
 
-        self.arm.move_line(p_down, p_after, p_start=-90, p_end=-60, duration=1.0)
+        return p_down
 
+    def execute_pick(self, rx, ry, current_pos=None):
+        """Grasp target and lift to Z_AFTER_PICK clearance height."""
+        if current_pos is None:
+            current_pos = np.array([config.REST_X, config.REST_Y, config.REST_Z])
+
+        print(f"\n[Pick] target=({rx:.1f}, {ry:.1f}), from={current_pos}")
+        p_down  = self._approach_and_grasp(rx, ry, current_pos)
+        p_after = np.array([rx, ry, config.Z_AFTER_PICK])
+        self.arm.move_line(p_down, p_after, p_start=-90, p_end=-60, duration=1.0)
         return p_after
 
     def execute_lift(self, rx, ry, height, current_pos=None):
-        """Execute pick-and-lift: grasp target and raise by `height` mm.
-
-        Args:
-            rx, ry: robot-frame target coordinates (mm)
-            height: lift distance above grab point (mm)
-            current_pos: actual current end-effector position (mm, [x, y, z]).
-                         Falls back to REST_POS if None.
-        """
+        """Grasp target and raise by `height` mm above grab point."""
         if current_pos is None:
             current_pos = np.array([config.REST_X, config.REST_Y, config.REST_Z])
 
-        p_up     = np.array([rx, ry, config.Z_HOVER])
-        p_down   = np.array([rx, ry, config.Z_GRAB])
-        p_lifted = np.array([rx, ry, np.clip(config.Z_GRAB + height, config.WS_Z[0], config.WS_Z[1])])
-
         print(f"\n[Lift] target=({rx:.1f}, {ry:.1f}), height={height}mm, from={current_pos}")
-
-        self.arm.gripper_control(70)
-        self.gripper_closed = False
-        time.sleep(0.3)
-
-        self.arm.servo_buffer.clear()
-
-        self.arm.move_line(current_pos, p_up,   p_start=-60, p_end=-60, duration=1.5)
-        self.arm.move_line(p_up,        p_down,  p_start=-60, p_end=-90, duration=1.5)
-
-        self.arm.gripper_control(120)
-        self.gripper_closed = True
-        time.sleep(0.5)
-
+        p_down   = self._approach_and_grasp(rx, ry, current_pos)
+        p_lifted = np.array([rx, ry, np.clip(config.Z_GRAB + height, config.WS_Z[0], config.WS_Z[1])])
         self.arm.move_line(p_down, p_lifted, p_start=-90, p_end=-60, duration=1.5)
-
         print(f"[OK] Lifted to Z={p_lifted[2]:.1f}mm")
         return p_lifted
 
@@ -601,80 +569,29 @@ class RobotApp:
 
     def get_audio_text(self):
         """Transcribe recorded audio frames to text."""
-        if not self.audio_frames:
-            return ""
+        return self.ear.get_text(self.audio_frames)
 
-        audio_data = np.concatenate(self.audio_frames, axis=0)
+    def _oscillate(self, axis, amplitude, cycles):
+        """Oscillate end-effector along `axis` for nod/shake gestures.
 
-        # Trim leading/trailing silence to reduce Whisper hallucinations
-        audio_flat = audio_data.flatten()
-        threshold = 0.01
-        nonzero = np.where(np.abs(audio_flat) > threshold)[0]
-        if len(nonzero) == 0:
-            print("[Audio] No speech detected")
-            return ""
+        Args:
+            axis: 'x', 'y', or 'z'
+            amplitude: half-swing distance in mm
+            cycles: number of full back-and-forth cycles
+        """
+        base_pos = self.current_pos.copy()
+        idx = {'x': 0, 'y': 1, 'z': 2}[axis]
 
-        margin = int(16000 * 0.3)  # 0.3 s padding on each side
-        start = max(0, nonzero[0] - margin)
-        end = min(len(audio_flat), nonzero[-1] + margin)
-        audio_trimmed = audio_flat[start:end]
+        self.grasp_sys.arm.servo_buffer.clear()
 
-        duration = len(audio_trimmed) / 16000
-        if duration < 0.5:
-            print(f"[Audio] Too short ({duration:.1f}s), skipping")
-            return ""
-        if duration > 15.0:
-            print(f"[Audio] Too long ({duration:.1f}s), truncating to 15s")
-            audio_trimmed = audio_trimmed[:16000 * 15]
+        for _ in range(cycles):
+            pos_a = base_pos.copy(); pos_a[idx] += amplitude
+            self.grasp_sys.arm.move_line(base_pos, pos_a, duration=0.5)
+            pos_b = base_pos.copy(); pos_b[idx] -= amplitude
+            self.grasp_sys.arm.move_line(pos_a, pos_b, duration=0.8)
+            self.grasp_sys.arm.move_line(pos_b, base_pos, duration=0.5)
 
-        temp_file = "temp_voice.wav"
-        wav.write(temp_file, 16000, (audio_trimmed * 32767).astype(np.int16))
-
-        segments, _ = self.ear.model.transcribe(
-            temp_file,
-            beam_size=5,
-            language="zh",
-            no_speech_threshold=0.5,
-            condition_on_previous_text=False,  # prevents "向右向右向右..." hallucination loop
-            # i18n: domain hint for Whisper — Chinese robot command vocabulary
-            initial_prompt="机械臂控制指令：抓取,抬起,放下,松开,复位,点头,摇头,削笔刀,盒子,零件,瓶子,厘米,毫米,向上,向下,向左,向右,向前,向后"
-        )
-
-        text = "".join(s.text for s in segments)
-        return self._fix_recognition(text.strip())
-
-    def _fix_recognition(self, text):
-        """Post-process ASR output: punctuation removal, homophone correction, dedup."""
-        if not text:
-            return text
-
-        text = re.sub(r'[,，。！？!?、;；]', '', text)
-
-        # i18n: Chinese homophone correction table (Whisper mishearings → correct words)
-        replacements = {
-            '小笔刀': '削笔刀', '消笔刀': '削笔刀', '销笔刀': '削笔刀',
-            '零米': '厘米', '里米': '厘米', '黎米': '厘米', '离米': '厘米',
-            '公分': '厘米', '利米': '厘米',
-            '电头': '点头', '点投': '点头', '店头': '点头', '垫头': '点头',
-            '药头': '摇头', '要头': '摇头', '右头': '摇头', '咬头': '摇头', '摇土': '摇头',
-        }
-        for wrong, right in replacements.items():
-            text = text.replace(wrong, right)
-
-        # Detect and strip repeated-phrase hallucinations like "向右向右向右..."
-        dedup_match = re.match(r'^(.{2,8}?)(.{2,8}?)\2{2,}', text)
-        if dedup_match:
-            text = dedup_match.group(1)
-            print(f"[Dedup] Repeated hallucination stripped, kept: {text}")
-
-        if len(text) > 30:
-            words = re.findall(r'向[上下左右前后]', text)
-            if len(words) > 3:
-                first_match = re.search(r'(.*?向[上下左右前后].*?\d+.*?厘米)', text)
-                text = first_match.group(1) if first_match else text[:20]
-                print(f"[Dedup] Overlong text truncated to: {text}")
-
-        return text.strip()
+        self.current_pos = base_pos
 
     def execute_command(self, cmd):
         """Dispatch a single parsed action command to the appropriate executor."""
@@ -738,36 +655,12 @@ class RobotApp:
 
         elif action == "nod":
             print("[Nod] Executing nod motion")
-            base_pos = self.current_pos.copy()
-            dist = 30.0  # 3 cm amplitude
-
-            self.grasp_sys.arm.servo_buffer.clear()
-
-            for _ in range(3):
-                up_pos = base_pos.copy(); up_pos[2] += dist
-                self.grasp_sys.arm.move_line(base_pos, up_pos, duration=0.5)
-                down_pos = base_pos.copy(); down_pos[2] -= dist
-                self.grasp_sys.arm.move_line(up_pos, down_pos, duration=0.8)
-                self.grasp_sys.arm.move_line(down_pos, base_pos, duration=0.5)
-
-            self.current_pos = base_pos
+            self._oscillate('z', config.GESTURE_AMPLITUDE, config.GESTURE_CYCLES)
             print("[OK] Nod complete")
 
         elif action == "shake_head":
             print("[ShakeHead] Executing shake-head motion")
-            base_pos = self.current_pos.copy()
-            dist = 30.0  # 3 cm amplitude
-
-            self.grasp_sys.arm.servo_buffer.clear()
-
-            for _ in range(3):
-                left_pos = base_pos.copy(); left_pos[1] += dist  # +y = left
-                self.grasp_sys.arm.move_line(base_pos, left_pos, duration=0.5)
-                right_pos = base_pos.copy(); right_pos[1] -= dist
-                self.grasp_sys.arm.move_line(left_pos, right_pos, duration=0.8)
-                self.grasp_sys.arm.move_line(right_pos, base_pos, duration=0.5)
-
-            self.current_pos = base_pos
+            self._oscillate('y', config.GESTURE_AMPLITUDE, config.GESTURE_CYCLES)
             print("[OK] Shake-head complete")
 
         else:
