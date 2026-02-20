@@ -1,34 +1,32 @@
-# 智能语音机械臂 / Voice-Controlled Robot Arm
+# 智能语音机械臂
 
 基于"耳-脑-眼-手"全链路闭环的具身智能系统，运行于消费级硬件，完全离线。
 
-*A full-stack embodied AI system — voice in, physical action out — running entirely offline on consumer hardware.*
+[English](README_EN.md)
 
 ---
 
-## 系统简介 / Overview
+## 系统简介
 
-| 能力 | 实现 | Capability |
-|:---|:---|:---|
-| **听** | Faster-Whisper，本地中文语音识别 | Speech-to-text (Chinese, local) |
-| **想** | DeepSeek-R1-1.5B + QLoRA 微调，自然语言→JSON | LLM + rule engine, NL→JSON actions |
-| **看** | YOLOv8s 目标检测 + 单应性矩阵手眼标定 | Object detection + hand-eye calibration |
-| **动** | D-H 逆运动学 + S-Curve 轨迹规划，ESP32 驱动 | IK solver + smooth trajectory → ESP32 PWM |
+| 能力 | 实现 |
+|:---|:---|
+| **听** | Faster-Whisper，本地中文语音识别 |
+| **想** | DeepSeek-R1-1.5B + QLoRA 微调，自然语言 → JSON |
+| **看** | YOLOv8s 目标检测 + 单应性矩阵手眼标定 |
+| **动** | D-H 逆运动学 + S-Curve 轨迹规划，ESP32 驱动 |
 
 硬件总成本 **¥317**，GPU 需求 RTX 3060 6GB（推理 <4GB 显存，延迟 <200ms）。
 
-*Total hardware cost ¥317 (~$45 USD). Requires an NVIDIA GPU for LLM inference.*
-
 ---
 
-## 系统架构 / Architecture
+## 系统架构
 
 ```
-麦克风 / Microphone
+麦克风
     │
     ▼
 ┌──────────────────┐
-│  Faster-Whisper  │  语音识别 (STT)  —  中文语音 → 文本
+│  Faster-Whisper  │  中文语音 → 文本
 └────────┬─────────┘
          │  "把削笔刀抬起5厘米"
          ▼
@@ -58,9 +56,9 @@
 
 ---
 
-## 硬件清单 / Bill of Materials
+## 硬件清单
 
-总计 **¥317** / ~$45 USD
+总计 **¥317**
 
 | # | 物品 | 规格 | 数量 | 单价 | 合计 |
 |:--|:---|:---|:--:|---:|---:|
@@ -71,71 +69,52 @@
 | 5 | 数字舵机 MG996R | 金属齿轮，高扭矩 | 5 | ¥27 | ¥133 |
 | 6 | 稳压电源 | 6V 6A，舵机专用 | 1 | ¥29 | ¥29 |
 
-**硬件连接 / Wiring**
+**硬件连接**
 
-- **ESP32 串口引脚**：X→14, Y→4, Z→5, B→18, 夹爪→23
+- **ESP32 引脚**：X→14, Y→4, Z→5, B→18, 夹爪→23
 - **电源**：舵机与 ESP32 分开供电（外部 6V/6A），防浪涌
 - **摄像头**：USB，固定于机械臂前方，覆盖整个工作台面
-- **串口**：USB 连接 ESP32，默认 `COM3`，可通过环境变量 `ROBOT_PORT` 修改
+- **串口**：USB 连接 ESP32，默认 `COM3`，可通过 `ROBOT_PORT` 环境变量修改
 
 ---
 
-## 安装 / Installation
+## 安装
 
-### 1. 烧录固件 / Flash Firmware
+### 1. 烧录固件
 
-Arduino IDE 2.x，开发板选 "ESP32 Dev Module"：
+Arduino IDE 2.x，开发板选 "ESP32 Dev Module"，打开 `main.ino`，选择串口，点击上传。
 
-```bash
-# 打开 main.ino，选择正确串口，上传
-# Open main.ino, select port, Upload
-```
+### 2. Python 环境
 
-### 2. Python 环境 / Python Setup
-
-Python 3.10+，CUDA 11.8 或 12.x（推荐）。
+Python 3.10+，CUDA 11.8 或 12.x。
 
 ```bash
-# 1. PyTorch（先去 pytorch.org 选对应 CUDA 版本）
-#    Visit pytorch.org to install the correct CUDA build first
-
-# 2. 其余依赖 / Other dependencies
+# 先去 pytorch.org 安装对应 CUDA 版本的 PyTorch，再安装其余依赖
 pip install -r requirements.txt
 ```
 
-### 3. 配置 / Configure
+### 3. 配置
 
-所有可调参数集中在 `config.py`，支持环境变量覆盖：
+所有可调参数集中在 `config.py`，支持环境变量覆盖，无需修改代码：
 
 ```bash
-# 修改串口（Windows COM 号 / Linux /dev/ttyUSB0）
-# Change serial port
-ROBOT_PORT=COM5 python voice_main.py
-
-# 修改模型路径 / Change model paths
-LLM_MODEL_PATH=D:\models\my_lora  python voice_main.py
-YOLO_MODEL_PATH=runs/best.pt      python voice_main.py
+ROBOT_PORT=COM5               python voice_main.py  # 修改串口
+LLM_MODEL_PATH=D:\models\lora python voice_main.py  # 修改 LLM 路径
+YOLO_MODEL_PATH=runs/best.pt  python voice_main.py  # 修改 YOLO 路径
 ```
 
-默认值见 `config.py`，无需修改代码。
-*Default values are in `config.py`; no code changes needed for standard tuning.*
+### 4. 模型准备
 
-### 4. 模型准备 / Models
-
-**语音 (Whisper)**：无需准备，首次运行自动下载 `base` 模型。
-*Auto-downloaded on first run.*
+**语音 (Whisper)**：首次运行自动下载 `base` 模型，无需准备。
 
 **视觉 (YOLO)**：需自行训练，50 张样本即可迁移学习：
 
 ```bash
-# 用 LabelImg 或 Roboflow 标注你的物体，然后：
 yolo detect train model=yolov8s.pt data=data.yaml epochs=100 imgsz=640
 # 产出 runs/detect/train/weights/best.pt → 复制到项目根目录
-# Copy runs/detect/train/weights/best.pt to project root
 ```
 
-**大模型 (LLM)**：需要对 DeepSeek-R1-1.5B 或 Qwen1.5-1.8B 进行 LoRA 微调。
-*Requires LoRA fine-tuning. See [`TRAINING.md`](TRAINING.md) for the complete guide.*
+**大模型 (LLM)**：需对 DeepSeek-R1-1.5B 或 Qwen1.5-1.8B 进行 LoRA 微调。完整流程见 [`TRAINING.md`](TRAINING.md)。
 
 训练数据格式（Alpaca）：
 ```json
@@ -149,31 +128,29 @@ yolo detect train model=yolov8s.pt data=data.yaml epochs=100 imgsz=640
 
 ---
 
-## 快速上手 / Quick Start
+## 快速上手
 
 ```bash
 python voice_main.py
 ```
 
-启动后依次加载：机械臂串口 → YOLO 模型 → Whisper → LLM，弹出摄像头窗口。
-*On startup: serial → YOLO → Whisper → LLM → camera window.*
+启动后依次加载：机械臂串口 → YOLO → Whisper → LLM，弹出摄像头窗口。
 
-**键盘快捷键 / Keyboard Shortcuts**
+**键盘快捷键**
 
-| 按键 | 功能 | Function |
-|:---|:---|:---|
-| **SPACE（按住）** | 录音，松开即识别 | Hold to record, release to recognize |
-| **C** | 进入 / 退出手眼标定模式 | Toggle hand-eye calibration mode |
-| **R** | 手动复位到原始姿态 | Manual reset to home position |
-| **O** | 强制张开夹爪 | Force open gripper |
-| **Q** | 退出程序 | Quit |
+| 按键 | 功能 |
+|:---|:---|
+| **SPACE（按住）** | 录音，松开即识别 |
+| **C** | 进入 / 退出手眼标定模式 |
+| **R** | 手动复位到原始姿态 |
+| **O** | 强制张开夹爪 |
+| **Q** | 退出程序 |
 
 ---
 
-## 语音指令 / Voice Commands
+## 语音指令
 
 所有指令用普通中文说话即可，无需特殊格式。
-*Speak natural Chinese. No special syntax required.*
 
 **抓取与搬运（需视觉定位）**
 ```
@@ -185,9 +162,9 @@ python voice_main.py
 
 **空间运动控制（精确移动）**
 ```
-"向上三厘米"          → Z 轴 +30mm
-"向左移动四毫米"       → Y 轴 +4mm
-"往前伸10厘米"         → X 轴 +100mm
+"向上三厘米"        → Z 轴 +30mm
+"向左移动四毫米"     → Y 轴 +4mm
+"往前伸10厘米"       → X 轴 +100mm
 ```
 
 **模糊移动**（不指定数值，默认 5cm）
@@ -204,78 +181,63 @@ python voice_main.py
 "松开"   → 张开夹爪，不移动
 ```
 
-**语音兼容性**
-系统内置谐音纠错：`"零米"→"厘米"`, `"小笔刀"→"削笔刀"`, `"电头"→"点头"` 等。
-*Built-in homophone correction for common Whisper mishearings.*
+**语音兼容性**：内置谐音纠错，如 `"零米"→"厘米"`、`"小笔刀"→"削笔刀"`、`"电头"→"点头"` 等。
 
 ---
 
-## 手眼标定 / Hand-Eye Calibration
+## 手眼标定
 
-摄像头移动后必须重新标定。按 **C** 键进入标定模式：
+摄像头移动后必须重新标定。按 **C** 键进入标定模式，依次点击 4 个角点：
 
 ```
-依次点击 4 个角点 / Click 4 corner points in order:
-
-  P1 (左上) ←→ 机械臂坐标 (90, 90)
-  P2 (右上) ←→ 机械臂坐标 (200, 90)
-  P3 (右下) ←→ 机械臂坐标 (200, -90)
-  P4 (左下) ←→ 机械臂坐标 (90, -90)
+P1（左上）←→ 机械臂坐标 (90,  90)
+P2（右上）←→ 机械臂坐标 (200,  90)
+P3（右下）←→ 机械臂坐标 (200, -90)
+P4（左下）←→ 机械臂坐标 (90, -90)
 ```
 
 点完第 4 个点后，单应性矩阵立即更新，无需重启。
-*Homography matrix updates instantly after the 4th click. No restart needed.*
 
 ---
 
-## 故障排除 / Troubleshooting
+## 故障排除
 
 | 现象 | 原因 | 解决 |
 |:---|:---|:---|
 | 按空格无反应 | 窗口焦点不在摄像头画面 | 点击一下摄像头窗口 |
 | 语音识别乱码 | 麦克风噪声 / 语速过快 | 安静环境，语速适中，按住空格 0.5s 再说话 |
-| "未找到目标" | YOLO 未检测到物体 | 调整物体角度、光照；检查物体是否在训练类别中 |
+| "未找到目标" | YOLO 未检测到物体 | 调整物体角度、光照；检查是否在训练类别中 |
 | 抓取位置偏离 | 摄像头被移动 | 按 **C** 重新四点标定 |
 | 无法连接串口 | ESP32 未插入 / 端口号不对 | 检查设备管理器，修改 `ROBOT_PORT` 环境变量 |
-| 机械臂启动剧烈抖动 | 五路舵机同时上电浪涌 | 已在固件中处理（阶梯式上电），若仍出现检查电源容量 |
+| 启动剧烈抖动 | 五路舵机同时上电浪涌 | 固件已做阶梯式上电；若仍出现，检查电源容量 |
 
 ---
 
-## 核心技术要点 / Technical Notes
+## 核心技术要点
 
 以下是开发过程中解决的关键工程问题，供复刻者参考。
 
 **D-H 逆运动学**
-长度 130mm 的 L4 连杆导致几何解析法在水平移动时产生 40° 轨迹偏移。最终采用 Scipy SLSQP 数值优化器，加入 `Pitch=-90°` 姿态约束（抓手始终垂直地面），彻底解决非线性偏移。
-
-*The 130mm L4 link caused ~40° path deviation with geometric IK. Solved by Scipy SLSQP numerical optimization with a Pitch=-90° constraint (end-effector always perpendicular to table).*
+130mm 的 L4 连杆导致几何解析法在水平移动时产生 40° 轨迹偏移。最终采用 Scipy SLSQP 数值优化器，加入 `Pitch=-90°` 姿态约束（抓手始终垂直地面），彻底解决非线性偏移。
 
 **S-Curve + 多层减震**
 MG996R 在长力臂下惯性震动严重。减震流水线：倾斜补偿 → 移动平均滤波（deque）→ 速度限制 → EMA 阻尼 → 死区过滤。
 
-*MG996R servos vibrate badly with a long lever arm. Solution: 5-layer damping pipeline — tilt correction → moving average (deque) → speed cap → EMA damping → dead-zone filter.*
-
 **双通道解析架构**
 简单指令（松开、复位、方向移动）走正则规则引擎，微秒级响应，且避免大模型将"向下三厘米"误判为 `lift`。只有含物体名的复杂指令才交给 LLM（延迟 <200ms）。
 
-*Simple commands (release/reset/directional) bypass the LLM entirely via a regex engine (microseconds). Complex commands with object names go to the LLM (<200ms). This prevents the common failure mode of "move down 3cm" being misclassified as a lift action.*
-
 **Pre-filling 截断**
-DeepSeek-R1 的推理模型默认会输出思维链（`<think>...</think>`）。通过手动追加 `<｜Assistant｜>` 标签进行 Pre-filling，强制模型跳过思考过程直接输出 JSON，实现 100% 格式遵循率。
-
-*DeepSeek-R1 defaults to outputting a chain-of-thought. Pre-filling with `<｜Assistant｜>` forces the model to skip the thinking phase and output JSON directly, achieving 100% format compliance.*
+DeepSeek-R1 默认输出思维链（`<think>...</think>`）。通过手动追加 `<｜Assistant｜>` 标签进行 Pre-filling，强制跳过思考过程直接输出 JSON，实现 100% 格式遵循率。
 
 **Whisper 反幻觉**
-三道防线，全部封装在 `RobotEar.get_text()` 内：① 音频首尾静音裁剪 + 时长上下限过滤；② `condition_on_previous_text=False`；③ 重复模式正则检测（去除"向右向右向右..."类幻觉）。音频相关阈值（静音灵敏度、最短/最长时长）均在 `config.py` 中统一配置。
-
-*Three defences, all encapsulated in `RobotEar.get_text()`: silence trimming + duration guards; `condition_on_previous_text=False`; repeated-phrase regex dedup. All thresholds are tunable via `config.py`.*
+三道防线，全部封装在 `RobotEar.get_text()` 内：① 首尾静音裁剪 + 时长过滤；② `condition_on_previous_text=False`；③ 重复模式正则检测（去除"向右向右向右..."类幻觉）。相关阈值均在 `config.py` 中统一配置。
 
 **工程坑：System Prompt 对齐**
 训练与推理的 System Prompt 必须完全一致，否则模型输出偏移（如输出 500mm 而非 50mm）。已在代码注释中标注警告。
 
 ---
 
-## 大模型训练 / LLM Training
+## 大模型训练
 
 约 500 条领域数据，QLoRA 微调 DeepSeek-R1-1.5B，Loss 收敛至 0.0519，格式错误率 0%。
 
@@ -283,25 +245,25 @@ DeepSeek-R1 的推理模型默认会输出思维链（`<think>...</think>`）。
 
 ---
 
-## 项目结构 / Project Structure
+## 项目结构
 
 ```
 robot_arm/
-├── README.md          本文档 / This file
-├── TRAINING.md        大模型 LoRA 微调研究笔记 / LLM fine-tuning notes
-├── requirements.txt   Python 依赖 / Dependencies
+├── README.md          本文档（中文）
+├── README_EN.md       English documentation
+├── TRAINING.md        大模型 LoRA 微调研究笔记
+├── requirements.txt   Python 依赖
 ├── config.py          全局常量：硬件、运动、音频、手势（支持环境变量覆盖）
-│                      / All tunables: hardware, motion, audio & gesture constants
 │
-├── main.ino           ESP32 固件，LEDC PWM 舵机控制 / ESP32 firmware
-├── arm_main.py        机械臂运动学核心：D-H IK + S-Curve / Kinematics & control
-├── whisper_main.py    语音识别全链路：静音裁剪→转录→纠错 / Full ASR pipeline (RobotEar)
-└── voice_main.py      主程序：语音→LLM→视觉→控制 / Main app orchestrator
+├── main.ino           ESP32 固件，LEDC PWM 舵机控制
+├── arm_main.py        机械臂运动学核心：D-H IK + S-Curve
+├── whisper_main.py    语音识别全链路：静音裁剪 → 转录 → 纠错
+└── voice_main.py      主程序：语音 → LLM → 视觉 → 控制
 ```
 
 ---
 
-## 关键数据 / Key Specs
+## 关键数据
 
 | 指标 | 值 |
 |:---|:---|
@@ -310,4 +272,4 @@ robot_arm/
 | 推理延迟 | <200ms（LLM），<50ms（规则引擎） |
 | 训练数据量 | ~500 条 |
 | 格式错误率 | 0% |
-| 运行模式 | 完全离线 / Fully offline |
+| 运行模式 | 完全离线 |
