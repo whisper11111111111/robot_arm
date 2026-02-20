@@ -8,8 +8,10 @@ import numpy as np
 import serial
 from scipy.optimize import minimize
 
+import config
+
 class RobotArmUltimate:
-    def __init__(self, port='COM3', baud=115200):
+    def __init__(self, port=config.SERIAL_PORT, baud=config.SERIAL_BAUD):
         # --- 1. Physical parameters (mm) ---
         self.L1, self.L2, self.L3, self.L4 = 70.0, 75.0, 50.0, 130.0
         self.current_servos_logic = np.array([90.0, 90.0, 90.0, 90.0])
@@ -22,10 +24,10 @@ class RobotArmUltimate:
         self.OFFSET_Z = 0.0
 
         # --- 3. Damping parameters ---
-        self.buffer_size = 3
+        self.buffer_size = config.DAMPING_BUFFER_SIZE
         self.servo_buffer = deque(maxlen=self.buffer_size)
-        self.max_servo_speed = 30.0  # max servo speed (deg/frame)
-        self.damping_factor = 0.7
+        self.max_servo_speed = config.DAMPING_MAX_SPEED  # max servo speed (deg/frame)
+        self.damping_factor = config.DAMPING_FACTOR
 
         try:
             self.ser = serial.Serial(port, baud, timeout=1)
@@ -150,11 +152,14 @@ class RobotArmUltimate:
         if self.ser: self.ser.close()
 
 if __name__ == "__main__":
-    arm = RobotArmUltimate(port='COM3')
+    arm = RobotArmUltimate()  # uses config.SERIAL_PORT / SERIAL_BAUD
 
-    arm.set_damping_params(buffer_size=3, max_speed=30.0, damping_factor=0.7)
-    # Tune offset_y if end-effector droops during horizontal moves
-    arm.set_correction(offset_y=-10.0, offset_z=0.0)
+    arm.set_damping_params(
+        buffer_size=config.DAMPING_BUFFER_SIZE,
+        max_speed=config.DAMPING_MAX_SPEED,
+        damping_factor=config.DAMPING_FACTOR,
+    )
+    arm.set_correction(offset_y=config.OFFSET_Y, offset_z=config.OFFSET_Z)
 
     p_standby = np.array([110, 100, 20])
     p_pick1   = np.array([210, 110, 20])
