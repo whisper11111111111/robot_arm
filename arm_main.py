@@ -3,7 +3,6 @@ from collections import deque
 import math
 import time
 
-import matplotlib.pyplot as plt
 import numpy as np
 import serial
 from scipy.optimize import minimize
@@ -16,12 +15,10 @@ class RobotArmUltimate:
         self.L1, self.L2, self.L3, self.L4 = 70.0, 75.0, 50.0, 130.0
         self.current_servos_logic = np.array([90.0, 90.0, 90.0, 90.0])
         self.last_sent_servos = np.array([0.0, 0.0, 0.0, 0.0])
-        self.path_history = []
 
-        # --- 2. Tilt correction offsets ---
-        # Increase OFFSET_Y if end-effector droops during horizontal moves
-        self.OFFSET_Y = 0.0
-        self.OFFSET_Z = 0.0
+        # --- 2. Tilt correction offsets (loaded from config; tune via OFFSET_Y/OFFSET_Z env vars) ---
+        self.OFFSET_Y = config.OFFSET_Y
+        self.OFFSET_Z = config.OFFSET_Z
 
         # --- 3. Damping parameters ---
         self.buffer_size = config.DAMPING_BUFFER_SIZE
@@ -103,8 +100,6 @@ class RobotArmUltimate:
             self.last_sent_servos = s_hardware.astype(int)
 
         self.current_servos_logic = s_logic_final
-        _, _, pts = self.forward_kinematics(*s_logic_final)
-        self.path_history.append(pts)
 
     def move_line(self, start_xyz, end_xyz, p_start=-90, p_end=-90, duration=3.0):
         """S-Curve trajectory planning with adaptive FPS based on distance."""
@@ -153,13 +148,6 @@ class RobotArmUltimate:
 
 if __name__ == "__main__":
     arm = RobotArmUltimate()  # uses config.SERIAL_PORT / SERIAL_BAUD
-
-    arm.set_damping_params(
-        buffer_size=config.DAMPING_BUFFER_SIZE,
-        max_speed=config.DAMPING_MAX_SPEED,
-        damping_factor=config.DAMPING_FACTOR,
-    )
-    arm.set_correction(offset_y=config.OFFSET_Y, offset_z=config.OFFSET_Z)
 
     p_standby = np.array([110, 100, 20])
     p_pick1   = np.array([210, 110, 20])
