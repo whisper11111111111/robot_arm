@@ -23,13 +23,13 @@
 
 ```mermaid
 flowchart TD
-    MIC["🎤 麦克风"] --> STT["Faster-Whisper\n中文语音识别"]
-    STT --> RULE{"规则解析引擎\n简单指令匹配"}
-    RULE -- "命中\n松开 / 复位 / 方向移动" --> ACT["JSON 动作指令"]
-    RULE -- "未命中\n含物体名的复杂指令" --> LLM["DeepSeek-R1-1.5B\nQLoRA FP16\n自然语言 → JSON"]
+    MIC["🎤 麦克风"] --> STT["Faster-Whisper<br/>中文语音识别"]
+    STT --> RULE{"规则解析引擎<br/>简单指令匹配"}
+    RULE -- "命中" --> ACT["JSON 动作指令"]
+    RULE -- "未命中（含物体名）" --> LLM["DeepSeek-R1-1.5B<br/>QLoRA FP16<br/>自然语言 → JSON"]
     LLM --> ACT
-    ACT --> VIS["YOLOv8s + Homography\n目标检测 · 手眼标定\n像素坐标 → 机械臂坐标 mm"]
-    VIS --> MOT["arm_main.py\nD-H 逆运动学 + S-Curve"]
+    ACT --> VIS["YOLOv8s + Homography<br/>目标检测 · 手眼标定<br/>像素坐标 → 机械臂坐标 mm"]
+    VIS --> MOT["arm_main.py<br/>D-H IK + S-Curve"]
     MOT --> ESP["ESP32 PWM → 舵机"]
 ```
 

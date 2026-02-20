@@ -23,13 +23,13 @@ Total hardware cost **¥317 (~$45 USD)**. Requires an NVIDIA GPU for LLM inferen
 
 ```mermaid
 flowchart TD
-    MIC["🎤 Microphone"] --> STT["Faster-Whisper\nChinese speech recognition"]
-    STT --> RULE{"Regex engine\nSimple command match"}
-    RULE -- "Hit\nrelease / reset / directional" --> ACT["JSON action"]
-    RULE -- "Miss\ncomplex command with object name" --> LLM["DeepSeek-R1-1.5B\nQLoRA FP16\nNatural language → JSON"]
+    MIC["🎤 Microphone"] --> STT["Faster-Whisper<br/>Chinese speech recognition"]
+    STT --> RULE{"Regex engine<br/>Simple command match"}
+    RULE -- "Hit" --> ACT["JSON action"]
+    RULE -- "Miss (has object name)" --> LLM["DeepSeek-R1-1.5B<br/>QLoRA FP16<br/>Natural language → JSON"]
     LLM --> ACT
-    ACT --> VIS["YOLOv8s + Homography\nObject detection · hand-eye calibration\nPixel coords → robot coords mm"]
-    VIS --> MOT["arm_main.py\nD-H IK + S-Curve trajectory"]
+    ACT --> VIS["YOLOv8s + Homography<br/>Object detection · hand-eye calibration<br/>Pixel coords → robot coords mm"]
+    VIS --> MOT["arm_main.py<br/>D-H IK + S-Curve"]
     MOT --> ESP["ESP32 PWM → Servos"]
 ```
 
