@@ -503,78 +503,81 @@ class AutoGraspSystem:
             return rx, ry
         return None
 
-    def execute_pick(self, rx, ry):
-        """执行抓取动作"""
-        print(f"\n>>> 执行抓取: ({rx:.1f}, {ry:.1f})")
+    def execute_pick(self, rx, ry, current_pos=None):
+        """Execute pick action: move to target (rx, ry) and grasp.
+
+        Args:
+            rx, ry: robot-frame target coordinates (mm)
+            current_pos: actual current end-effector position (mm, [x, y, z]).
+                         Falls back to default rest position if None.
+        """
+        if current_pos is None:
+            current_pos = np.array([120.0, 0.0, 60.0])
+
         Z_HOVER = 120.0
         Z_GRAB = -15.0
         Z_AFTER_PICK = 50.0
-        
+
         p_up = np.array([rx, ry, Z_HOVER])
         p_down = np.array([rx, ry, Z_GRAB])
         p_after = np.array([rx, ry, Z_AFTER_PICK])
-        
-        # 张开夹爪
+
+        print(f"\n[Pick] target=({rx:.1f}, {ry:.1f}), from={current_pos}")
+
         self.arm.gripper_control(70)
         self.gripper_closed = False
         time.sleep(0.3)
-        
-        # 【修复】清空缓冲区，确保新动作不受之前状态影响
-        self.arm.servo_buffer = []
-        
-        # 【修复】使用 move_line 从当前位置移动到目标上方（更可靠）
-        # 先获取当前位置的近似值
-        current_approx = np.array([120.0, 0.0, 60.0])  # 默认休息位置
-        self.arm.move_line(current_approx, p_up, p_start=-60, p_end=-60, duration=1.5)
-        
-        # 下降抓取
+
+        self.arm.servo_buffer.clear()
+
+        self.arm.move_line(current_pos, p_up, p_start=-60, p_end=-60, duration=1.5)
         self.arm.move_line(p_up, p_down, p_start=-60, p_end=-90, duration=1.5)
-        
-        # 闭合夹爪
+
         self.arm.gripper_control(120)
         self.gripper_closed = True
         time.sleep(0.5)
-        
-        # 抬起
+
         self.arm.move_line(p_down, p_after, p_start=-90, p_end=-60, duration=1.0)
-        
+
         return p_after
 
-    def execute_lift(self, rx, ry, height):
-        """执行抓取并抬起到指定高度"""
-        print(f"\n>>> 执行抬起: 目标({rx:.1f}, {ry:.1f}), 高度{height}mm")
+    def execute_lift(self, rx, ry, height, current_pos=None):
+        """Execute pick-and-lift: grasp target and raise by `height` mm.
+
+        Args:
+            rx, ry: robot-frame target coordinates (mm)
+            height: lift distance above grab point (mm)
+            current_pos: actual current end-effector position (mm, [x, y, z]).
+                         Falls back to default rest position if None.
+        """
+        if current_pos is None:
+            current_pos = np.array([120.0, 0.0, 60.0])
+
         Z_HOVER = 120.0
         Z_GRAB = -15.0
-        
+
         p_up = np.array([rx, ry, Z_HOVER])
         p_down = np.array([rx, ry, Z_GRAB])
-        p_lifted = np.array([rx, ry, Z_GRAB + height])
-        p_lifted[2] = np.clip(p_lifted[2], -20, 200)
-        
-        # 张开夹爪
+        p_lifted = np.array([rx, ry, np.clip(Z_GRAB + height, -20, 200)])
+
+        print(f"\n[Lift] target=({rx:.1f}, {ry:.1f}), height={height}mm, from={current_pos}")
+
         self.arm.gripper_control(70)
         self.gripper_closed = False
         time.sleep(0.3)
-        
-        # 【修复】清空缓冲区
-        self.arm.servo_buffer = []
-        
-        # 【修复】使用 move_line 移动到目标上方
-        current_approx = np.array([120.0, 0.0, 60.0])
-        self.arm.move_line(current_approx, p_up, p_start=-60, p_end=-60, duration=1.5)
-        
-        # 下降抓取
+
+        self.arm.servo_buffer.clear()
+
+        self.arm.move_line(current_pos, p_up, p_start=-60, p_end=-60, duration=1.5)
         self.arm.move_line(p_up, p_down, p_start=-60, p_end=-90, duration=1.5)
-        
-        # 闭合夹爪
+
         self.arm.gripper_control(120)
         self.gripper_closed = True
         time.sleep(0.5)
-        
-        # 抬起到指定高度
+
         self.arm.move_line(p_down, p_lifted, p_start=-90, p_end=-60, duration=1.5)
-        
-        print(f"✓ 已抬起到高度: Z={p_lifted[2]:.1f}mm")
+
+        print(f"[OK] Lifted to Z={p_lifted[2]:.1f}mm")
         return p_lifted
 
     def execute_release(self):
@@ -601,7 +604,7 @@ class AutoGraspSystem:
         p_drop = np.array([current_pos[0], current_pos[1], Z_TABLE])
         
         # 【修复】清空缓冲区
-        self.arm.servo_buffer = []
+        self.arm.servo_buffer.clear()
         
         # 移动到放置点
         # 注意：如果当前已经在桌面高度以下，不要强行移动，或者先抬升? 
@@ -627,7 +630,7 @@ class AutoGraspSystem:
         time.sleep(0.3)
         
         # 【修复】清空缓冲区
-        self.arm.servo_buffer = []
+        self.arm.servo_buffer.clear()
         
         # 【修复】使用 move_line 移动（更可靠）
         # 从一个安全的中间位置开始
@@ -755,29 +758,27 @@ class RobotApp:
         if action == "lift":
             target = cmd.get("target", "part")
             height = float(cmd.get("height", 50))
-            
+
             pos = self.grasp_sys.find_target(target)
             if pos:
                 rx, ry = pos
-                # 【修复】使用正确的方法名
-                self.current_pos = self.grasp_sys.execute_lift(rx, ry, height)
-                print(f"✓ 已抬起 {target}，当前位置: {self.current_pos}")
+                self.current_pos = self.grasp_sys.execute_lift(rx, ry, height, current_pos=self.current_pos)
+                print(f"[OK] Lifted {target}, pos={self.current_pos}")
             else:
-                print(f"✗ 未找到目标: {target}")
-                print(f"  当前可见目标: {list(self.grasp_sys.detected_targets.keys())}")
-                
+                print(f"[Error] Target not found: {target}")
+                print(f"  Visible: {list(self.grasp_sys.detected_targets.keys())}")
+
         elif action == "pick":
             target = cmd.get("target", "part")
-            
+
             pos = self.grasp_sys.find_target(target)
             if pos:
                 rx, ry = pos
-                # 【修复】使用正确的方法名
-                self.current_pos = self.grasp_sys.execute_pick(rx, ry)
-                print(f"✓ 已抓取 {target}，当前位置: {self.current_pos}")
+                self.current_pos = self.grasp_sys.execute_pick(rx, ry, current_pos=self.current_pos)
+                print(f"[OK] Picked {target}, pos={self.current_pos}")
             else:
-                print(f"✗ 未找到目标: {target}")
-                print(f"  当前可见目标: {list(self.grasp_sys.detected_targets.keys())}")
+                print(f"[Error] Target not found: {target}")
+                print(f"  Visible: {list(self.grasp_sys.detected_targets.keys())}")
                 
         elif action == "move_inc":
             axis = cmd.get("axis", "z")
@@ -818,7 +819,7 @@ class RobotApp:
             dist = 30.0
             
             # 清空缓冲，确保动作连贯
-            self.grasp_sys.arm.servo_buffer = []
+            self.grasp_sys.arm.servo_buffer.clear()
             
             for i in range(3):
                 # 向上
@@ -843,7 +844,7 @@ class RobotApp:
             dist = 30.0
             
             # 清空缓冲
-            self.grasp_sys.arm.servo_buffer = []
+            self.grasp_sys.arm.servo_buffer.clear()
             
             for i in range(3):
                 # 向左 (y增加是左)
