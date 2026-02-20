@@ -1,17 +1,20 @@
-import cv2
-import numpy as np
-import time
+import json
 import os
 import re
-import json
-import torch
-import sounddevice as sd
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from ultralytics import YOLO  
-from arm_main import RobotArmUltimate 
-from whisper_main import RobotEar 
+import time
 
-# 禁用代理
+import cv2
+import numpy as np
+import scipy.io.wavfile as wav
+import sounddevice as sd
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from ultralytics import YOLO
+
+from arm_main import RobotArmUltimate
+from whisper_main import RobotEar
+
+# Disable proxy for local serial/model communication
 os.environ["no_proxy"] = "localhost,127.0.0.1"
 
 # =========================================================
@@ -686,7 +689,6 @@ class RobotApp:
             print(f">>> [语音] 音频太长({duration:.1f}s)，截断到15秒")
             audio_trimmed = audio_trimmed[:16000 * 15]
         
-        import scipy.io.wavfile as wav
         temp_file = "temp_voice.wav"
         wav.write(temp_file, 16000, (audio_trimmed * 32767).astype(np.int16))
         
