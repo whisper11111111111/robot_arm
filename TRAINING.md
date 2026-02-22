@@ -1,3 +1,11 @@
+# 大模型训练笔记 / LLM Fine-Tuning Notes
+
+> DeepSeek-R1-1.5B + QLoRA 微调，实现机械臂指令解析 · ~500 条数据 · Loss 0.0519 · 格式错误率 0%
+>
+> *QLoRA fine-tuning of DeepSeek-R1-1.5B for robot arm command parsing. ~500 samples, loss 0.0519, 0% format error rate.*
+
+---
+
 # 基于 DeepSeek-R1-1.5B 微调的轻量级具身智能指令解析系统研究
 
 ## 1. 项目背景与摘要 (Abstract)

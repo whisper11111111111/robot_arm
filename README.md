@@ -1,200 +1,254 @@
-# 🤖 智能语音具身智能机械臂 (Voice-Controlled Embodied AI Robot Arm)
+# 智能语音机械臂
 
-> 🚀 **桌面级具身智能 (Embodied AI) 最佳实践**：构建“耳-脑-眼-手”全链路闭环控制系统。
+基于"耳-脑-眼-手"全链路闭环的具身智能系统，运行于消费级硬件，完全离线。
 
-本项目实现了一套运行在消费级笔记本（RTX 3060, 6GB）上的**全栈离线具身智能系统**。通过多模态模型融合，打通了从自然语言到物理动作的最后壁垒：
-*   **听 (Listen)**：集成 **Faster-Whisper**，支持抗噪中文语音指令输入；
-*   **想 (Think)**：部署微调后的 **DeepSeek/Qwen 大语言模型**，具备极强的复杂语义理解与逻辑推理能力；
-*   **看 (See)**：结合 **YOLOv8 机器视觉** 与单应性矩阵手眼标定，实现亚毫米级目标定位；
-*   **动 (Act)**：自研 **D-H 逆运动学** 求解器与平滑轨迹规划算法，精准驱动机械臂执行抓取、搬运等任务。
-
-无需联网，低成本复刻，满足边缘计算与隐私安全需求。
-
-> **关键词**: `Embodied AI`, `Robot Arm`, `Voice Control`, `LLM`, `DeepSeek`, `YOLOv8`, `Whisper`, `Fine-tuning`, `Inverse Kinematics`
-
-## ✨ 项目亮点
-
-*   **👂 听 (Listen)**: 使用 **Faster-Whisper** 进行本地语音识别，支持抗噪与谐音纠错。
-*   **🧠 想 (Think)**: 基于 **DeepSeek/Qwen** 大模型微调 (LoRA)，将自然语言能够解析为结构化的 JSON 动作指令。
-*   **👁️ 看 (Look)**: 结合 **YOLOv8** 视觉识别与手眼标定系统，实现精准的物体定位。
-*   **💪 动 (Move)**: 自研 **D-H 逆运动学算法** 与 S-Curve 速度规划，保证机械臂在 ESP32 控制下的平滑运动。
+[English](README_EN.md)
 
 ---
 
-## 🛠️ 技术栈总览
+## 系统简介
 
-| 模块 | 技术方案 | 作用 |
-| :--- | :--- | :--- |
-| **语音识别** | **Faster-Whisper** (Base) | 离线语音转文本，支持流式输入 |
-| **语义理解** | **LLM (DeepSeek/Qwen) + LoRA** | 指令意图解析，泛化复杂语序 |
-| **视觉感知** | **YOLOv8s** + OpenCV | 目标检测与坐标映射 (Homography) |
-| **运动控制** | **Python (IK)** + **ESP32 (C++)** | 逆解算与底层 PWM 舵机驱动 |
-| **训练框架** | **LLaMA-Factory** | 高效微调大模型指令跟随能力 |
+| 能力 | 实现 |
+|:---|:---|
+| **听** | Faster-Whisper，本地中文语音识别 |
+| **想** | DeepSeek-R1-1.5B + QLoRA 微调，自然语言 → JSON |
+| **看** | YOLOv8s 目标检测 + 单应性矩阵手眼标定 |
+| **动** | D-H 逆运动学 + S-Curve 轨迹规划，ESP32 驱动 |
+
+硬件总成本 **¥317**，GPU 需求 RTX 3060 6GB（推理 <4GB 显存，延迟 <200ms）。
 
 ---
 
-# 📖 项目复刻指南 (Replication Guide)
+## 系统架构
 
-本指南详细介绍了如何从零开始复刻本项目，包括硬件准备、环境搭建、以及**最关键的三个AI模型（语音、视觉、大脑）的获取与训练方法**。
-
-## 1. 硬件准备 (Hardware)
-
-### 1.1 项目物料清单 (BOM) & 成本
-
-本项目硬件成本极低，总花费约 **¥317**。以下是基于实际采购发票的详细清单：
-
-| 序号 | 物品名称 | 规格/型号 | 数量 | 单价 (CNY) | 总费用 (CNY) | 备注 |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | 3D打印机械臂 | 教具/机械臂 (散件) | 1 个 | 71.00 | 71.00 | 包含亚克力/PLA结构件 |
-| 2 | ESP32开发板 | WiFi+蓝牙双核 MCU | 1 件 | 18.71 | 18.71 | 主控核心 |
-| 3 | ESP32配件 | (接插件/扩展板) | 1 件 | 4.55 | 4.55 | 辅助连接 |
-| 4 | 工业摄像头 | USB免驱 / 广角 | 1 个 | 61.00 | 61.00 | 机器视觉输入 |
-| 5 | 数字舵机 | MG996R (金属齿轮) | 5 个 | 26.54 | 132.70 | 大扭矩驱动 |
-| 6 | 稳压电源 | 6V 6A | 1 个 | 29.00 | 29.00 | 舵机供电 |
-| **总计** | | | | | **¥316.96** | **高性价比** |
-
-### 1.2 硬件连接说明
-
-### 1.2 硬件连接说明
-
-*   **机械臂**: 也就是本项目中的 `RobotArmUltimate`。
-    *   要求：支持串口通信（Serial），使用标准舵机控制协议。
-    *   连接：USB连接电脑，需确认串口号（代码默认为 `COM3`，请在 `arm_main.py` 或 `voice_main.py` 中修改）。
-*   **摄像头**: USB免驱网络摄像头。
-    *   安装位置：固定在机械臂前方或上方，确保能覆盖工作台面。
-*   **麦克风**: 任意USB麦克风或电脑内置麦克风。
-*   **计算设备**: 建议配备 NVIDIA 显卡的 Windows/Linux 电脑（用于加速 YOLO 和 LLM 推理）。
-
-### 1.3 固件烧录 (Firmware)
-本项目包含下位机控制代码 `main.ino`，适用于 ESP32 开发板。
-*   **开发环境**: Arduino IDE 2.x
-*   **开发板管理器**: ESP32 by Espressif Systems (建议版本 3.0.0+)
-*   **烧录步骤**:
-    1.  使用 USB 数据线连接 ESP32 到电脑。
-    2.  打开 `main.ino` 文件。
-    3.  选择开发板型号（如 "ESP32 Dev Module"）和端口。
-    4.  上传代码。
-    5.  记下端口号（如 `COM3`），后续需在 `voice_main.py` 中配置。
-
-## 2. 软件环境搭建 (Software)
-
-### 2.1 基础环境
-1.  安装 **Python 3.10+**。
-2.  安装 **CUDA** (如果你有NVIDIA显卡)，建议版本 11.8 或 12.x，以便使用 `torch` 的 GPU 版本。
-3.  克隆本项目代码。
-
-### 2.2 依赖安装
-请在终端运行以下命令安装所需库：
-
-```bash
-# 基础工具
-pip install numpy opencv-python pyserial sounddevice scipy
-
-# AI 模型相关 (PyTorch, Ultralytics, Transformers)
-# 注意：PyTorch 请去官网 https://pytorch.org/ 根据你的 CUDA 版本安装对应的命令
-pip install torch torchvision torchaudio 
-
-# 视觉与大模型
-pip install ultralytics transformers accelerate peft bitsandbytes
-
-# 语音识别
-pip install openai-whisper
+```mermaid
+flowchart TD
+    MIC["🎤 麦克风"] --> STT["Faster-Whisper<br/>中文语音识别"]
+    STT --> RULE{"规则解析引擎<br/>简单指令匹配"}
+    RULE -- "命中" --> ACT["JSON 动作指令"]
+    RULE -- "未命中（含物体名）" --> LLM["DeepSeek-R1-1.5B<br/>QLoRA FP16<br/>自然语言 → JSON"]
+    LLM --> ACT
+    ACT --> VIS["YOLOv8s + Homography<br/>目标检测 · 手眼标定<br/>像素坐标 → 机械臂坐标 mm"]
+    VIS --> MOT["arm_main.py<br/>D-H IK + S-Curve"]
+    MOT --> ESP["ESP32 PWM → 舵机"]
 ```
 
-## 3. 三大核心模型获取与训练指南 (Model Training)
+---
 
-本项目包含三个核心 AI 模块，请分别按照以下步骤准备。
+## 硬件清单
 
-### 3.1 👂 语音听觉 (Whisper)
-*   **作用**: 将你的语音指令转为文字。
-*   **获取方法**: 
-    *   **无需训练**。代码使用了 OpenAI 的 `whisper` 模型。
-    *   首次运行时，程序会自动下载模型权重（如 `base` 或 `small` 模型）。
-    *   代码位置：`whisper_main.py` 中的 `RobotEar` 类。
+总计 **¥317**
 
-### 3.2 👁️ 视觉感知 (YOLOv8)
-*   **作用**: 识别桌面上的物体（如：削笔刀、盒子、零件）并定位其像素坐标。
-*   **获取方法**: **需要训练** (Custom Training)。
-*   **详细步骤**:
-    1.  **数据采集**: 
-        *   打开摄像头，拍摄你的桌面上不同摆放位置的物体图片（建议 100-300 张）。
-    2.  **数据标注**:
-        *   使用 `LabelImg` 或 `Roboflow` 等工具进行标注。
-        *   类别名称必须与可以被语音识别到的名称对应（如：`part`, `box` 等）。
-        *   *注意：本项目目前默认将所有目标映射为 `part` 进行抓取，但训练时建议区分不同类别。*
-    3.  **模型训练**:
-        *   确保你安装了 `ultralytics`。
-        *   准备 `data.yaml` 文件，指定 `train` 和 `val` 图片路径及类别名称。
-        *   运行训练命令：
-            ```bash
-            yolo detect train model=yolov8s.pt data=data.yaml epochs=100 imgsz=640
-            ```
-    4.  **模型部署**:
-        *   训练完成后，会在 `runs/detect/train/weights/` 下生成 `best.pt`。
-        *   将 `best.pt` 复制到项目根目录，并在 `voice_main.py` 中修改加载路径：`self.model = YOLO('best.pt')`。
+| # | 物品 | 规格 | 数量 | 单价 | 合计 |
+|:--|:---|:---|:--:|---:|---:|
+| 1 | 3D 打印机械臂（散件） | 教具级，含亚克力/PLA 结构件 | 1 | ¥71 | ¥71 |
+| 2 | ESP32 开发板 | WiFi+蓝牙双核 MCU | 1 | ¥19 | ¥19 |
+| 3 | ESP32 配件 | 接插件/扩展板 | 1 | ¥5 | ¥5 |
+| 4 | USB 工业摄像头 | 免驱，广角，1280×720 | 1 | ¥61 | ¥61 |
+| 5 | 数字舵机 MG996R | 金属齿轮，高扭矩 | 5 | ¥27 | ¥133 |
+| 6 | 稳压电源 | 6V 6A，舵机专用 | 1 | ¥29 | ¥29 |
 
-### 3.3 🧠 逻辑大脑 (LLM + LoRA)
-*   **作用**: 将自然语言（例如“把那个红色的块拿起来”）翻译成机器能读懂的 JSON 指令（`{"action": "pick", ...}`）。
-*   **获取方法**: **基于开源大模型进行微调 (Fine-tuning)**。
-*   **详细步骤**:
-    1.  **基座模型准备**:
-        *   建议下载 Qwen1.5-1.8B, Llama-3-8B 或 ChatGLM3-6B 等适合本地运行的模型。
-    2.  **构建数据集**:
-        *   参考项目中的 `robot_train.json` 文件。
-        *   格式（Alpaca 格式）：
-            ```json
-            [
-              {
-                "instruction": "向左移动一厘米",
-                "input": "",
-                "system": "你是机械臂JSON转换器...",
-                "output": "[{\"action\": \"move_inc\", \"axis\": \"y\", \"value\": 10}]"
-              }
-            ]
-            ```
-        *   你需要编写大量类似的 "中文指令 -> JSON" 对照数据，覆盖抓取、移动、摇头等场景。
-    3.  **微调 (Fine-tuning)**:
-        *   本项目集成了 **LLaMA-Factory** 框架（见 `LLaMA-Factory/` 目录）。
-        *   使用 LLaMA-Factory 进行 LoRA 微调：
-            ```bash
-            cd LLaMA-Factory
-            # 示例微调命令 (需根据实际显存调整参数)
-            llamafactory-cli train \
-                --stage sft \
-                --do_train \
-                --model_name_or_path /path/to/base_model \
-                --dataset robot_train \
-                --template qwen \
-                --finetuning_type lora \
-                --output_dir ../saves/lora_adapter \
-                --per_device_train_batch_size 4 \
-                --gradient_accumulation_steps 4 \
-                --lr_scheduler_type cosine \
-                --logging_steps 10 \
-                --save_steps 100 \
-                --learning_rate 5e-5 \
-                --num_train_epochs 5.0
-            ```
-    4.  **模型加载**:
-        *   训练完成后，你将获得一个 LoRA 权重文件夹（如 `saves/lora_adapter`）。
-        *   在 `voice_main.py` 的 `RobotBrain` 类中，将 `model_path` 指向你的 LoRA 文件夹路径（代码中默认为 `D:\lora\2`）。
-        *   *代码不仅加载了 LoRA，还通过 `AutoModelForCausalLM` 自动合并加载了基座模型（前提是 LoRA 的配置文件里记录了基座模型路径）。*
+**硬件连接**
 
-## 4. 运行与标定 (Run & Calibration)
+- **ESP32 引脚**：X→14, Y→4, Z→5, B→18, 夹爪→23
+- **电源**：舵机与 ESP32 分开供电（外部 6V/6A），防浪涌
+- **摄像头**：USB，固定于机械臂前方，覆盖整个工作台面
+- **串口**：USB 连接 ESP32，默认 `COM3`，可通过 `ROBOT_PORT` 环境变量修改
 
-1.  **连接硬件**: 插入摄像头和机械臂 USB。
-2.  **启动程序**:
-    ```bash
-    python voice_main.py
-    ```
-3.  **手眼标定 (Hand-Eye Calibration)**:
-    *   **无论摄像头怎么动，都需要重新标定**。
-    *   在程序运行画面中，按下键盘 **`C`** 键进入标定模式。
-    *   此时画面会提示依次点击 4 个点（左上、右上、右下、左下）。
-    *   请用鼠标在画面中点击机械臂实际能够到达的这 4 个对应的矩形区域角点（对应机械臂坐标 `(90,90), (200,90), (200,-90), (90,-90)`）。
-    *   点击完第 4 个点后，系统会自动计算变换矩阵，至此标定完成。
+---
 
-## 5. 使用方法
-*   按住 **空格键** 说话（如：“把那个零件拿起来”，“向左两厘米”）。
-*   松开空格键，机械臂将自动执行动作。
-*   更多快捷键和指令说明请参考 `使用说明书.md`。
+## 安装
+
+### 1. 烧录固件
+
+Arduino IDE 2.x，开发板选 "ESP32 Dev Module"，打开 `main.ino`，选择串口，点击上传。
+
+### 2. Python 环境
+
+Python 3.10+，CUDA 11.8 或 12.x。
+
+```bash
+# 先去 pytorch.org 安装对应 CUDA 版本的 PyTorch，再安装其余依赖
+pip install -r requirements.txt
+```
+
+### 3. 配置
+
+所有可调参数集中在 `config.py`，支持环境变量覆盖，无需修改代码：
+
+```bash
+ROBOT_PORT=COM5               python voice_main.py  # 修改串口
+LLM_MODEL_PATH=D:\models\lora python voice_main.py  # 修改 LLM 路径
+YOLO_MODEL_PATH=runs/best.pt  python voice_main.py  # 修改 YOLO 路径
+```
+
+### 4. 模型准备
+
+**语音 (Whisper)**：首次运行自动下载 `base` 模型，无需准备。
+
+**视觉 (YOLO)**：需自行训练，50 张样本即可迁移学习：
+
+```bash
+yolo detect train model=yolov8s.pt data=data.yaml epochs=100 imgsz=640
+# 产出 runs/detect/train/weights/best.pt → 复制到项目根目录
+```
+
+**大模型 (LLM)**：需对 DeepSeek-R1-1.5B 或 Qwen1.5-1.8B 进行 LoRA 微调。完整流程见 [`TRAINING.md`](TRAINING.md)。
+
+训练数据格式（Alpaca）：
+```json
+{
+  "instruction": "把削笔刀抬起5厘米",
+  "input": "",
+  "system": "你是机械臂JSON转换器...",
+  "output": "[{\"action\": \"lift\", \"target\": \"part\", \"height\": 50}]"
+}
+```
+
+---
+
+## 快速上手
+
+```bash
+python voice_main.py
+```
+
+启动后依次加载：机械臂串口 → YOLO → Whisper → LLM，弹出摄像头窗口。
+
+**键盘快捷键**
+
+| 按键 | 功能 |
+|:---|:---|
+| **SPACE（按住）** | 录音，松开即识别 |
+| **C** | 进入 / 退出手眼标定模式 |
+| **R** | 手动复位到原始姿态 |
+| **O** | 强制张开夹爪 |
+| **Q** | 退出程序 |
+
+---
+
+## 语音指令
+
+所有指令用普通中文说话即可，无需特殊格式。
+
+**抓取与搬运（需视觉定位）**
+```
+"把削笔刀抓起来"
+"抓住那个盒子"
+"把削笔刀抬起5厘米"
+"将零件举高10公分"
+```
+
+**空间运动控制（精确移动）**
+```
+"向上三厘米"        → Z 轴 +30mm
+"向左移动四毫米"     → Y 轴 +4mm
+"往前伸10厘米"       → X 轴 +100mm
+```
+
+**模糊移动**（不指定数值，默认 5cm）
+```
+"向左"  "抬起"  "往下"
+```
+
+**动作交互**
+```
+"点头"   → 当前位置上下往复 3 次（幅度 3cm）
+"摇头"   → 当前位置左右往复 3 次（幅度 3cm）
+"放下"   → 降至桌面高度（Z=-15mm）并松开夹爪
+"复位"   → 回到初始安全姿态 [120, 0, 60] mm
+"松开"   → 张开夹爪，不移动
+```
+
+**语音兼容性**：内置谐音纠错，如 `"零米"→"厘米"`、`"小笔刀"→"削笔刀"`、`"电头"→"点头"` 等。
+
+---
+
+## 手眼标定
+
+摄像头移动后必须重新标定。按 **C** 键进入标定模式，依次点击 4 个角点：
+
+```
+P1（左上）←→ 机械臂坐标 (90,  90)
+P2（右上）←→ 机械臂坐标 (200,  90)
+P3（右下）←→ 机械臂坐标 (200, -90)
+P4（左下）←→ 机械臂坐标 (90, -90)
+```
+
+点完第 4 个点后，单应性矩阵立即更新，无需重启。
+
+---
+
+## 故障排除
+
+| 现象 | 原因 | 解决 |
+|:---|:---|:---|
+| 按空格无反应 | 窗口焦点不在摄像头画面 | 点击一下摄像头窗口 |
+| 语音识别乱码 | 麦克风噪声 / 语速过快 | 安静环境，语速适中，按住空格 0.5s 再说话 |
+| "未找到目标" | YOLO 未检测到物体 | 调整物体角度、光照；检查是否在训练类别中 |
+| 抓取位置偏离 | 摄像头被移动 | 按 **C** 重新四点标定 |
+| 无法连接串口 | ESP32 未插入 / 端口号不对 | 检查设备管理器，修改 `ROBOT_PORT` 环境变量 |
+| 启动剧烈抖动 | 五路舵机同时上电浪涌 | 固件已做阶梯式上电；若仍出现，检查电源容量 |
+
+---
+
+## 核心技术要点
+
+以下是开发过程中解决的关键工程问题，供复刻者参考。
+
+**D-H 逆运动学**
+130mm 的 L4 连杆导致几何解析法在水平移动时产生 40° 轨迹偏移。最终采用 Scipy SLSQP 数值优化器，加入 `Pitch=-90°` 姿态约束（抓手始终垂直地面），彻底解决非线性偏移。
+
+**S-Curve + 多层减震**
+MG996R 在长力臂下惯性震动严重。减震流水线：倾斜补偿 → 移动平均滤波（deque）→ 速度限制 → EMA 阻尼 → 死区过滤。
+
+**双通道解析架构**
+简单指令（松开、复位、方向移动）走正则规则引擎，微秒级响应，且避免大模型将"向下三厘米"误判为 `lift`。只有含物体名的复杂指令才交给 LLM（延迟 <200ms）。
+
+**Pre-filling 截断**
+DeepSeek-R1 默认输出思维链（`<think>...</think>`）。通过手动追加 `<｜Assistant｜>` 标签进行 Pre-filling，强制跳过思考过程直接输出 JSON，实现 100% 格式遵循率。
+
+**Whisper 反幻觉**
+三道防线，全部封装在 `RobotEar.get_text()` 内：① 首尾静音裁剪 + 时长过滤；② `condition_on_previous_text=False`；③ 重复模式正则检测（去除"向右向右向右..."类幻觉）。相关阈值均在 `config.py` 中统一配置。
+
+**工程坑：System Prompt 对齐**
+训练与推理的 System Prompt 必须完全一致，否则模型输出偏移（如输出 500mm 而非 50mm）。已在代码注释中标注警告。
+
+---
+
+## 大模型训练
+
+约 500 条领域数据，QLoRA 微调 DeepSeek-R1-1.5B，Loss 收敛至 0.0519，格式错误率 0%。
+
+完整训练流程见 [`TRAINING.md`](TRAINING.md)，包括：QLoRA 超参数配置、GGUF vs Transformers 方案对比、Pre-filling 推理方案详解、实验结果。
+
+---
+
+## 项目结构
+
+```
+robot_arm/
+├── README.md          本文档（中文）
+├── README_EN.md       English documentation
+├── TRAINING.md        大模型 LoRA 微调研究笔记
+├── requirements.txt   Python 依赖
+├── config.py          全局常量：硬件、运动、音频、手势（支持环境变量覆盖）
+│
+├── main.ino           ESP32 固件，LEDC PWM 舵机控制
+├── arm_main.py        机械臂运动学核心：D-H IK + S-Curve
+├── whisper_main.py    语音识别全链路：静音裁剪 → 转录 → 纠错
+└── voice_main.py      主程序：语音 → LLM → 视觉 → 控制
+```
+
+---
+
+## 关键数据
+
+| 指标 | 值 |
+|:---|:---|
+| 硬件成本 | ¥317 |
+| GPU 需求 | RTX 3060 6GB（推理 <4GB 显存） |
+| 推理延迟 | <200ms（LLM），<50ms（规则引擎） |
+| 训练数据量 | ~500 条 |
+| 格式错误率 | 0% |
+| 运行模式 | 完全离线 |

@@ -1,0 +1,33 @@
+# Robot Arm Voice Control System - Dependencies
+# Python 3.10+ required
+#
+# GPU acceleration (CUDA 11.8 / 12.x) is strongly recommended.
+# Install PyTorch with CUDA from: https://pytorch.org/get-started/locally/
+# Example (CUDA 12.1):
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# --- Core scientific stack ---
+numpy>=1.24
+scipy>=1.11
+
+# --- Serial communication ---
+pyserial>=3.5
+
+# --- Computer vision ---
+opencv-python>=4.8
+ultralytics>=8.0          # YOLOv8
+
+# --- Audio ---
+sounddevice>=0.4.6
+
+# --- Speech recognition ---
+faster-whisper>=1.0.0     # NOTE: this is faster-whisper, NOT openai-whisper
+
+# --- LLM inference ---
+torch>=2.0                # install with CUDA wheels from pytorch.org
+transformers>=4.40
+accelerate>=0.27
+peft>=0.10                # LoRA adapter loading
+
+# --- Visualization (arm_main.py demo) ---
+matplotlib>=3.7
