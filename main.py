@@ -285,10 +285,10 @@ class RobotBrain:
         # 左右
         m = re.search(f'向?左.{{0,4}}?{num_pattern}\\s*(厘米|cm|毫米|mm|米米)?', text)
         if m:
-            return [{"action": "move_inc", "axis": "y", "value": extract_value(m)}]
+            return [{"action": "move_inc", "axis": "y", "value": -extract_value(m)}]
         m = re.search(f'向?右.{{0,4}}?{num_pattern}\\s*(厘米|cm|毫米|mm|米米)?', text)
         if m:
-            return [{"action": "move_inc", "axis": "y", "value": -extract_value(m)}]
+            return [{"action": "move_inc", "axis": "y", "value": extract_value(m)}]
         
         # 前后
         m = re.search(f'(向?前|往前).{{0,4}}?{num_pattern}\\s*(厘米|cm|毫米|mm|米米)?', text)
@@ -313,10 +313,10 @@ class RobotBrain:
             
         # 向左
         if re.search(r'(向?左|往左)', text):
-            return [{"action": "move_inc", "axis": "y", "value": DEFAULT_MOVE}]
+            return [{"action": "move_inc", "axis": "y", "value": -DEFAULT_MOVE}]
         # 向右
         if re.search(r'(向?右|往右)', text):
-            return [{"action": "move_inc", "axis": "y", "value": -DEFAULT_MOVE}]
+            return [{"action": "move_inc", "axis": "y", "value": DEFAULT_MOVE}]
             
         # 向前
         if re.search(r'(向?前|往前)', text):
@@ -368,7 +368,7 @@ class RobotBrain:
             unit = left_match.group(2) or '厘米'
             if '毫米' not in unit and 'mm' not in unit:
                 value *= 10
-            cmds.append({"action": "move_inc", "axis": "y", "value": value})
+            cmds.append({"action": "move_inc", "axis": "y", "value": -value})
             print(f">>> [备用解析结果] {cmds}")
             return cmds
         
@@ -377,7 +377,7 @@ class RobotBrain:
             unit = right_match.group(2) or '厘米'
             if '毫米' not in unit and 'mm' not in unit:
                 value *= 10
-            cmds.append({"action": "move_inc", "axis": "y", "value": -value})
+            cmds.append({"action": "move_inc", "axis": "y", "value": value})
             print(f">>> [备用解析结果] {cmds}")
             return cmds
         
@@ -948,13 +948,13 @@ class RobotApp:
             self.grasp_sys.arm.servo_buffer = []
             
             for i in range(3):
-                # 向左 (y增加是左)
+                # 向左 (y减少是左)
                 left_pos = base_pos.copy()
-                left_pos[1] += dist
+                left_pos[1] -= dist
                 self.grasp_sys.arm.move_line(base_pos, left_pos, duration=0.5)
                 # 向右
                 right_pos = base_pos.copy()
-                right_pos[1] -= dist
+                right_pos[1] += dist
                 self.grasp_sys.arm.move_line(left_pos, right_pos, duration=0.8)
                 # 回中
                 self.grasp_sys.arm.move_line(right_pos, base_pos, duration=0.5)
@@ -1004,7 +1004,7 @@ class RobotApp:
             
             # 显示录音状态
             if self.is_recording:
-                cv2.putText(frame, "● RECORDING...", (50, 50), 
+                cv2.putText(frame, "RECORDING...", (50, 50), 
                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             
             # 显示夹爪状态

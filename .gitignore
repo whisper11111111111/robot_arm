@@ -48,6 +48,7 @@ LLaMA-Factory/
 !arm_main.py
 !whisper_main.py
 !config.py
+!calibrate.py
 
 # JSON 训练数据
 *.json
