@@ -1,45 +1,145 @@
-import cv2
-import numpy as np
-import time
+"""
+voice_main.py
+=============
+主程序入口：语音 + 视觉 + 控制全链路闭环系统。
+
+模块组成：
+    - RobotBrain     : 基于本地 HuggingFace 模型的语义解析器
+    - AutoGraspSystem: YOLO 视觉识别 + 单应性标定 + 动作执行
+    - RobotApp       : 预主应用，管理音频流、主循环和键盘事件
+"""
+
+# ── 标准库 ──
+import json
 import os
 import re
-import json
-import torch
-import sounddevice as sd
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from ultralytics import YOLO  
-from arm_main import RobotArmUltimate 
-from whisper_main import RobotEar 
+import time
 
-# 禁用代理
+# ── 第三方库 ──
+import cv2
+import numpy as np
+import scipy.io.wavfile as wav
+import sounddevice as sd
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from ultralytics import YOLO
+
+# ── 项目模块 ──
+from arm_main import RobotArmUltimate
+from config import (
+    ARM_CORRECTION_OFFSET_Y, ARM_CORRECTION_OFFSET_Z,
+    ARM_DAMPING_BUFFER_SIZE, ARM_DAMPING_FACTOR, ARM_DAMPING_MAX_SPEED,
+    ARM_REST_POSITION,
+    AUDIO_MAX_DURATION, AUDIO_MIN_DURATION, AUDIO_SAMPLE_RATE, AUDIO_SILENCE_MARGIN,
+    CALIB_IMAGE_POINTS, CALIB_ROBOT_POINTS,
+    CAMERA_HEIGHT, CAMERA_INDEX, CAMERA_WIDTH,
+    LLM_MODEL_PATH,
+    TEMP_AUDIO_FILE,
+    YOLO_MODEL_PATH,
+)
+from whisper_main import RobotEar
+
 os.environ["no_proxy"] = "localhost,127.0.0.1"
 
-# =========================================================
-# 1. 标定数据（与 yolo_main.py 保持一致）
-# =========================================================
-robot_points = np.array([
-    [90, 90], [200, 90], [200, -90], [90, -90]
-], dtype=np.float32)
-initial_image_points = [[817, 72], [433, 79], [291, 612], [1029, 610]]
-CALIB_CENTER_Y = 0.0
+# ── 标定配置（从 config 加载，修改标定数据请编辑 config.py）──
+robot_points         = np.array(CALIB_ROBOT_POINTS,  dtype=np.float32)
+initial_image_points = np.array(CALIB_IMAGE_POINTS,  dtype=np.float32)
+CALIB_CENTER_Y       = 0.0   # Y 轴镜像修正基准（不做偏移）
 
-# =========================================================
-# 2. 大模型指令解析器（优化提示词）
-# =========================================================
+# ──────────────────────────────────────────────────────────────
+# 1. 大模型指令解析器
+# ──────────────────────────────────────────────────────────────
 class RobotBrain:
-    def __init__(self, model_path=r"D:\lora\2"):
+    """
+    语义理解大脑：将山语音/文字转化为结构化 JSON 动作指令。
+
+    优先通过规则匹配引擎 (_try_simple_parse) 处理简单方向指令，
+    更复杂的包含目标物体的指令才调用微调模型推理。
+
+    Args:
+        model_path (str): 本地微调模型路径，默认读取 config.LLM_MODEL_PATH。
+    """
+
+    def __init__(self, model_path: str = LLM_MODEL_PATH) -> None:
         self.model_path = model_path
         print(f">>> [大脑] 正在加载模型: {self.model_path}")
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_path,
-            device_map="auto",
-            dtype=torch.float16,
-            trust_remote_code=True
-        )
+        # 优先尝试标准加载；Windows 页面文件不足时（OSError 1455）
+        # 改用直接写入 CUDA 显存的方式，绕过 CPU 内存映射
+        try:
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_path,
+                device_map="auto",
+                dtype=torch.float16,
+                trust_remote_code=True,
+            )
+        except OSError as e:
+            if "1455" not in str(e) and "页面文件" not in str(e):
+                raise
+            print(">>> [大脑] 页面文件不足，切换直接 GPU 加载模式…")
+            self.model = self._load_direct_gpu(self.model_path)
         self.model.eval()
         # 【关键】system prompt 必须和训练数据一致
         self.system_prompt = "你是机械臂JSON转换器。一个指令=一个动作！\n规则：\n1. 单位：厘米×10=毫米\n2. 轴向：上/下=z, 左/右=y, 前/后=x\n3. 正负：上/左/前=正, 下/右/后=负\n4. 目标：所有物体映射为 \"part\"\n5. 只输出JSON数组。\n6. 示例：摇头即输出 [{\"action\": \"shake_head\"}]"
+
+    @staticmethod
+    def _load_direct_gpu(model_path: str):
+        """逐张量流式加载 safetensors，完全绕过 mmap 和 Windows 页面文件。
+
+        逐一读取每个权重张量（普通 seek+read，不 mmap），即时写入 GPU，
+        峰值内存仅等于最大单张量尺寸（~100MB），不受页面文件限制。
+        """
+        import struct
+        import glob
+        from transformers import AutoConfig
+        from accelerate import init_empty_weights
+        from accelerate.utils import set_module_tensor_to_device
+
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        print(f">>> [大脑] 正在使用流式加载模式（无 mmap）→ {device}…")
+
+        # 构建空模型骨架（meta device，零显存占用）
+        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+        with init_empty_weights():
+            model = AutoModelForCausalLM.from_config(
+                config, dtype=torch.float16, trust_remote_code=True
+            )
+
+        dtype_map = {
+            "F16": torch.float16, "F32": torch.float32,
+            "BF16": torch.bfloat16, "I32": torch.int32, "I64": torch.int64,
+        }
+
+        for sf_file in glob.glob(os.path.join(model_path, "*.safetensors")):
+            print(f"    流式读取 {os.path.basename(sf_file)}…")
+            with open(sf_file, "rb") as f:
+                # 解析文件头
+                header_size = struct.unpack("<Q", f.read(8))[0]
+                header = json.loads(f.read(header_size).decode("utf-8"))
+                base_offset = 8 + header_size
+
+                for name, info in header.items():
+                    if name == "__metadata__":
+                        continue
+                    dtype  = dtype_map[info["dtype"]]
+                    shape  = info["shape"]
+                    start, end = info["data_offsets"]
+
+                    # 只读取当前张量的字节，不 mmap 整个文件
+                    f.seek(base_offset + start)
+                    raw = f.read(end - start)
+                    tensor = torch.frombuffer(bytearray(raw), dtype=dtype).reshape(shape).clone()
+                    del raw
+
+                    # 将此张量直接写入 GPU 上对应的模型参数槽
+                    set_module_tensor_to_device(
+                        model, name, device,
+                        value=tensor.to(dtype=torch.float16),
+                    )
+                    del tensor
+
+        print(f">>> [大脑] 流式加载完成（设备: {device}）。")
+        return model
 
     def think(self, user_text):
         """将自然语言转换为JSON指令列表"""
@@ -163,8 +263,8 @@ class RobotBrain:
             else:
                 try:
                     value = int(val_str)
-                except:
-                    value = 5 # 默认值
+                except (ValueError, TypeError):
+                    value = 5  # 默认值
             
             unit = match.group(unit_group) or '厘米'
             if '毫米' in unit or 'mm' in unit or '米米' in unit: # 兼容"米米"听写错误
@@ -639,16 +739,22 @@ class AutoGraspSystem:
         return p_rest
 
 
-# =========================================================
-# 4. 主应用程序
-# =========================================================
+# ──────────────────────────────────────────────────────────────
+# 3. 主应用程序
+# ──────────────────────────────────────────────────────────────
 class RobotApp:
-    def __init__(self):
-        self.grasp_sys = AutoGraspSystem()
-        self.brain = RobotBrain()
-        self.ear = RobotEar()
-        
-        self.current_pos = np.array([120.0, 0.0, 60.0])
+    """
+    主应用：管理音频流、主循环和键盘事件。
+
+    将 RobotBrain、AutoGraspSystem、RobotEar 组合为完整的集成运行实体。
+    """
+
+    def __init__(self) -> None:
+        self.grasp_sys   = AutoGraspSystem()
+        self.brain       = RobotBrain()
+        self.ear         = RobotEar()
+
+        self.current_pos = np.array(ARM_REST_POSITION, dtype=float)
         self.is_recording = False
         self.audio_frames = []
 
@@ -671,27 +777,25 @@ class RobotApp:
         if len(nonzero) == 0:
             print(">>> [语音] 未检测到有效音频")
             return ""
-        # 前后各留 0.3 秒余量
-        margin = int(16000 * 0.3)
-        start = max(0, nonzero[0] - margin)
-        end = min(len(audio_flat), nonzero[-1] + margin)
+        # 静音裁剪——前后各保留 AUDIO_SILENCE_MARGIN 秒余量
+        margin   = int(AUDIO_SAMPLE_RATE * AUDIO_SILENCE_MARGIN)
+        start    = max(0, nonzero[0] - margin)
+        end      = min(len(audio_flat), nonzero[-1] + margin)
         audio_trimmed = audio_flat[start:end]
         
         # 【优化2】音频太短（<0.5秒）或太长（>15秒）直接跳过
-        duration = len(audio_trimmed) / 16000
-        if duration < 0.5:
-            print(f">>> [语音] 音频太短({duration:.1f}s)，跳过")
+        duration = len(audio_trimmed) / AUDIO_SAMPLE_RATE
+        if duration < AUDIO_MIN_DURATION:
+            print(f">>> [语音] 音频太短 ({duration:.1f}s)，跳过")
             return ""
-        if duration > 15.0:
-            print(f">>> [语音] 音频太长({duration:.1f}s)，截断到15秒")
-            audio_trimmed = audio_trimmed[:16000 * 15]
+        if duration > AUDIO_MAX_DURATION:
+            print(f">>> [语音] 音频过长 ({duration:.1f}s)，截断至 {AUDIO_MAX_DURATION} 秒")
+            audio_trimmed = audio_trimmed[:int(AUDIO_SAMPLE_RATE * AUDIO_MAX_DURATION)]
         
-        import scipy.io.wavfile as wav
-        temp_file = "temp_voice.wav"
-        wav.write(temp_file, 16000, (audio_trimmed * 32767).astype(np.int16))
-        
+        wav.write(TEMP_AUDIO_FILE, AUDIO_SAMPLE_RATE, (audio_trimmed * 32767).astype(np.int16))
+
         segments, _ = self.ear.model.transcribe(
-            temp_file,
+            TEMP_AUDIO_FILE,
             beam_size=5,
             language="zh",
             no_speech_threshold=0.5,        # 静音段置信度阈值
@@ -871,7 +975,7 @@ class RobotApp:
         stream = sd.InputStream(
             callback=self.audio_callback,
             channels=1,
-            samplerate=16000
+            samplerate=AUDIO_SAMPLE_RATE,
         )
         stream.start()
         
@@ -979,9 +1083,9 @@ class RobotApp:
         print("\n>>> 程序已退出")
 
 
-# =========================================================
-# 5. 程序入口
-# =========================================================
+# ──────────────────────────────────────────────────────────────
+# 4. 程序入口
+# ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app = RobotApp()
     app.run()

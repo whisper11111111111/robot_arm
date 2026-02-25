@@ -1,0 +1,29 @@
+# 语音控制具身智能机械臂项目依赖
+# 安装命令：pip install -r requirements.txt
+#
+# 注意：
+#   - torch 建议通过官网安装 CUDA 版本：https://pytorch.org/get-started/locally/
+#   - faster-whisper 需要 CUDA 运行时支持
+
+# ── 核心深度学习框架 ──
+torch>=2.0.0                  # PyTorch（建议安装 CUDA 版本）
+torchvision>=0.15.0
+
+# ── 大语言模型推理 ──
+transformers>=4.40.0          # HuggingFace Transformers
+accelerate>=0.28.0            # 多设备自动分配
+ollama>=0.1.8                 # Ollama 本地 LLM 客户端
+
+# ── 语音识别 ──
+faster-whisper>=1.0.0         # 本地 Whisper 推理引擎
+sounddevice>=0.4.6            # 音频录制
+scipy>=1.11.0                 # WAV 文件读写
+
+# ── 计算机视觉 ──
+ultralytics>=8.0.0            # YOLOv8
+opencv-python>=4.8.0          # OpenCV
+
+# ── 机械臂控制 ──
+pyserial>=3.5                 # 串口通信（ESP32）
+numpy>=1.24.0                 # 数值计算
+scipy>=1.11.0                 # 优化求解（逆运动学）

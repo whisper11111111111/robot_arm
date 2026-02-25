@@ -1,7 +1,6 @@
-# Python internals
+﻿# Python internals
 __pycache__/
 *.py[cod]
-*$py.class
 *.log
 
 # Virtual environments
@@ -13,38 +12,43 @@ env/
 .vscode/
 .idea/
 
-# Models & Weights (Excluded)
+# AI 模型权重（体积过大，不入库）
 *.pt
 *.pth
 *.bin
 *.onnx
 *.safetensors
+*.gguf
 *.engine
-best.pt
-yolov8s-world.pt
 
-# Large Data & Outputs (Excluded)
+# 训练产物与缓存
 runs/
 saves/
-data/
-images/
+llamaboard_cache/
+
+# 临时文件
+temp_voice.wav
+*.wav
+
+# 非核心子目录
 CLIP-main/
-LLaMA-Factory/
 model/
 test_code/
-__pycache__/
+else/
 
-# Temporary Files
-temp_voice.wav
+# LLaMA-Factory 有自己的 git 仓库，整体排除（README 中有说明即可）
+LLaMA-Factory/
 
-# Unused Python Files (Exclude everything by default, then allow specific ones)
+# 个人发票文件，禁止上传
+发票/
+
+# Python 文件白名单（仅保留核心代码）
 *.py
-*.json
-
-# Allow only necessary files (Whitelist)
-!voice_main.py
+!main.py
 !arm_main.py
 !whisper_main.py
-!项目介绍文档.md
-!ck.md
-!lora.md
+!config.py
+
+# JSON 训练数据
+*.json
+!LLaMA-Factory/data/robot_train.json
